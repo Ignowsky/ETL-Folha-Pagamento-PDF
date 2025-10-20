@@ -9,8 +9,8 @@ O script foi projetado para lidar com o layout específico de um sistema de folh
 ## 💡 Problema Resolvido
 
 O departamento de RH e Finanças frequentemente lida com dezenas ou centenas de relatórios de folha de pagamento em PDF. A extração manual desses dados para análise é um processo:
-- **Lento e repetitivo:** Consome horas preciosas de trabalho.
-- **Propenso a erros:** A digitação manual pode levar a inconsistências nos dados.
+- **Extremamente Lento e Repetitivo:** O processo manual de preenchimento e conferência dos dados podia levar dias de trabalho. Com a automação, essa tarefa é concluída em segundos
+- **Propenso a erros:** A digitação manual pode levar a incosistências nos dados, compromentendo a confiabilidade das análises.
 - **Não escalável:** Torna-se inviável com o crescimento do número de funcionários.
 
 Este script resolve esses problemas ao fornecer uma solução automatizada, rápida e precisa.
