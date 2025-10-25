@@ -4,6 +4,24 @@
 
 Este projeto foi desenhado para processar diretórios contendo múltiplos arquivos PDF de folha de pagamento (holerites, recibos de férias, 13º salário), extrair dados de cada funcionário e de cada rubrica, e carregar tudo de forma estruturada em um data warehouse no PostgreSQL.
 
+```mermaid
+graph LR;
+    subgraph Fase 1: Parsing e Estruturação;
+        A[📂 Diretório de PDFs] -- 1. Leitura --> B(Script de Parsing Python);
+        B -- 2. Aplica Regex e Lógica --> C{MAPEAMENTO_ORIGINAL};
+        B --> D[📄 BASE_FOPAG_CONSOLIDADA_TOTAIS.csv];
+        B --> E[📄 BASE_FOPAG_DETALHA_RUBRICAS.csv];
+    end;
+
+subgraph Fase 2: Carga no Data Warehouse;
+        D -- 3. Leitura e Limpeza --> F(Script de Carga Python);
+        E -- 3. Leitura e Limpeza --> F;
+        F -- 4. Conexão Segura (SQLAlchemy) --> G[🐘 Banco de Dados PostgreSQL];
+        G -- 5. Delete-then-Append --> H[Tabela - FOPAG.fopag_totais];
+        G -- 5. Delete-then-Append --> I[Tabela - FOPAG.fopag_rubricas_detalhe];
+    end;
+```
+
 ## ✨ Funcionalidades Principais
 
 * **Extração de PDF:** Utiliza o `pdfplumber` para ler e extrair texto de arquivos PDF.
