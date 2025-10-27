@@ -69,13 +69,13 @@ Saídas:
 
 `BASE_FOPAG_DETALHADA_RUBRICAS.csv`
 
- 🧠 `Carga_API_Solides.ipynb` #**(ETL do Data Warehouse)**
+## 🧠(ETL do Data Warehouse) - `Carga_API_Solides.ipynb`
 
 ### Objetivo: Centralizar e estruturar os dados no PostgreSQL.
 
-### Tecnologias: `requests`, `pandas`, `sqlalchemy`, python-dotenv`
+### Tecnologias: `requests`, `pandas`, `sqlalchemy`, `python-dotenv`
 
-Etapas ETL:
+### Etapas ETL:
 
 ### 🔹 Extract
 
