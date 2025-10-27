@@ -1,141 +1,257 @@
-# 🚀 ETL de Folha de Pagamento (PDF para PostgreSQL)
+# 🧩 Projeto de ETL e Data Warehouse para People Analytics (Solides API & FOPAG PDFs)
 
-> Um pipeline de dados em Python completo para automatizar a extração, transformação e carga (ETL) de relatórios complexos de folha de pagamento em PDF para um banco de dados PostgreSQL.
+Este projeto implementa um **pipeline de dados completo** para centralizar informações de **Recursos Humanos**, unificando dados **cadastrais (API Solides)** e **financeiros (Folha de Pagamento - PDFs)** em um **Data Warehouse dimensional (PostgreSQL)**, pronto para análise em **Power BI**.
 
-Este projeto foi desenhado para processar diretórios contendo múltiplos arquivos PDF de folha de pagamento (holerites, recibos de férias, 13º salário), extrair dados de cada funcionário e de cada rubrica, e carregar tudo de forma estruturada em um data warehouse no PostgreSQL.
+---
 
+## 🚀 1. Visão Geral da Arquitetura
+
+O processo é dividido em duas etapas principais, orquestradas por **dois notebooks Python**:
+
+- **`Automação_FOPAG.ipynb`** → Parser de PDFs da folha de pagamento.
+- **`Carga_API_Solides.ipynb`** → Orquestrador ETL (API + CSV → PostgreSQL).
+
+### 🧠 Fluxo do Processo (Mermaid)
 ```mermaid
-graph LR;
-    subgraph Fase 1: Parsing e Estruturação;
-        A[📂 Diretório de PDFs] -- 1. Leitura --> B(Script de Parsing Python);
-        B -- 2. Aplica Regex e Lógica --> C{MAPEAMENTO_ORIGINAL};
-        B --> D[📄 BASE_FOPAG_CONSOLIDADA_TOTAIS.csv];
-        B --> E[📄 BASE_FOPAG_DETALHA_RUBRICAS.csv];
-    end;
+graph LR
 
-subgraph Fase 2: Carga no Data Warehouse;
-        D -- 3. Leitura e Limpeza --> F(Script de Carga Python);
-        E -- 3. Leitura e Limpeza --> F;
-        F -- 4. Conexão Segura (SQLAlchemy) --> G[🐘 Banco de Dados PostgreSQL];
-        G -- 5. Delete-then-Append --> H[Tabela - FOPAG.fopag_totais];
-        G -- 5. Delete-then-Append --> I[Tabela - FOPAG.fopag_rubricas_detalhe];
-    end;
+subgraph "Fonte 1: Folha de Pagamento (PDF)"
+    A["pastas/FOPAG/*.pdf"] -->|Leitura| B["Automacao_FOPAG.ipynb"]
+    B -->|Gera| C["BASE_FOPAG_CONSOLIDADA_TOTAIS.csv"]
+    B -->|Gera| D["BASE_FOPAG_DETALHADA_RUBRICAS.csv"]
+end
+
+subgraph "Fonte 2: Dados Cadastrais (API)"
+    E["Solides API /colaboradores"] -->|Extracao| F["Carga_API_Solides.ipynb"]
+end
+
+subgraph "Processo de Carga (ETL Python)"
+    C -->|Leitura| F
+    D -->|Leitura| F
+    F -->|Gera e Carrega| J["dim_calendario"]
+    F -->|Staging e UPSERT| G["dim_colaboradores"]
+    F -->|Carga Incremental| H["fato_folha_consolidada"]
+    F -->|Carga Incremental| I["fato_folha_detalhada"]
+end
+
+subgraph "Data Warehouse (PostgreSQL)"
+    DW["PostgreSQL DW (Schema: FOPAG)"]
+    G --> DW
+    H --> DW
+    I --> DW
+    J --> DW
+end
+
+subgraph "Consumo (Power BI)"
+    DW -->|Importar| K["Power BI / Power Query"]
+    K -->|Transformar e Modelar| L["Modelo de Dados Star Schema"]
+    L -->|Visualizar| M["Dashboard de People Analytics"]
+end
 ```
 
-## ✨ Funcionalidades Principais
 
-* **Extração de PDF:** Utiliza o `pdfplumber` para ler e extrair texto de arquivos PDF.
-* **Parsing Robusto com Regex:** Emprega expressões regulares (`re`) para lidar com layouts de PDF complexos e variáveis, identificando corretamente cada funcionário e seus dados, mesmo em documentos com múltiplos holerites.
-* **Mapeamento de Rubricas:** Inclui um dicionário de mapeamento central (`MAPEAMENTO_ORIGINAL`) que traduz códigos internos de pagamento (ex: '101', '998') para descrições padronizadas (ex: 'P_Salario_Base', 'D_INSS').
-* **Geração de Duas Bases:** O script de parsing gera duas saídas principais:
-    1.  **Consolidada:** Uma linha por funcionário por competência, com todos os totais (Proventos, Descontos, Líquido, Bases de Cálculo).
-    2.  **Detalhada:** Uma linha para cada rubrica (item) de cada funcionário, permitindo análises granulares.
-* **ETL Incremental para Postgres:** O segundo script (`célula 4`) implementa um pipeline de ETL que carrega os CSVs gerados para o PostgreSQL.
-* **Carga Idempotente (Delete-then-Append):** A carga no banco é segura para ser re-executada. O script deleta os dados de uma competência que já existe antes de inserir os novos, evitando duplicatas e garantindo que os dados estejam sempre atualizados.
-* **Tipagem de Dados SQL:** Define explicitamente os tipos de dados no PostgreSQL (`Date`, `Numeric(10, 2)`) para garantir a integridade e precisão dos dados financeiros.
+# ⚙️ 2. Componentes do Projeto
+## 🧾 Automação_FOPAG.ipynb (Parser de PDF)
 
-## ⚙️ Como Funciona: O Pipeline de Duas Etapas
+Objetivo: Extrair informações de folhas de pagamento em PDF e gerar arquivos CSV estruturados.
+´´´Tecnologias: pdfplumber, pandas, re´´´
 
-O processo é dividido em duas grandes etapas, ambas contidas no notebook `leitor_fopag.ipynb`.
+## Principais Funcionalidades:
 
-### Etapa 1: Parsing de PDF para CSV
+Leitura em lote: Varre o diretório FOPAG/ e processa todos os PDFs.
+Extração robusta: Usa RegEx para identificar blocos de texto e extrair campos de cada colaborador.
+Mapeamento de rubricas: Traduz códigos de rubricas em descrições padronizadas e classifica como Provento ou Desconto.
+Compatibilidade com diferentes layouts: Detecta holerites e recibos de férias automaticamente.
 
-A primeira parte do pipeline (célula principal) foca em ler os PDFs brutos e transformá-los em arquivos CSV estruturados.
+Saídas:
 
-1.  **Leitura:** O script varre o diretório `FOPAG/` em busca de todos os arquivos `.pdf`.
-2.  **Extração:** O texto de cada PDF é extraído.
-3.  **Divisão:** O texto é dividido em blocos, um para cada funcionário, usando regex para identificar os cabeçalhos.
-4.  **Extração de Dados:** Para cada bloco de funcionário, o script usa regex para extrair:
-    * Dados do Cabeçalho (Nome, CPF, Cargo, Admissão, Departamento).
-    * Dados do Rodapé (Total Proventos, Total Descontos, Líquido, Bases de INSS, FGTS, IRRF). A lógica é robusta para encontrar esses valores tanto em holerites mensais quanto em recibos de férias.
-    * Dados da Tabela de Rubricas (Código, Descrição, Valor).
-5.  **Mapeamento:** As rubricas extraídas são traduzidas usando o `MAPEAMENTO_CODIGOS`.
-6.  **Saída:** Os dados são salvos em dois arquivos:
-    * `BASE_FOPAG_CONSOLIDADA_TOTAIS.csv`
-    * `BASE_FOPAG_DETALHADA_RUBRICAS.csv`
+`BASE_FOPAG_CONSOLIDADA_TOTAIS.csv`
 
-### Etapa 2: Carga dos CSVs para o PostgreSQL
+`BASE_FOPAG_DETALHADA_RUBRICAS.csv`
 
-A segunda parte do pipeline (célula 4) pega os CSVs gerados e os carrega no banco de dados.
+ 🧠 `Carga_API_Solides.ipynb` #**(ETL do Data Warehouse)**
 
-1.  **Extração (dos CSVs):** Os dois arquivos CSV são lidos com o `pandas`, forçando todos os campos como `string` para um tratamento de tipos controlado.
-2.  **Transformação:** Uma função `tratar_tipos_dataframe_csv` realiza a limpeza final:
-    * Converte colunas de data (ex: `01/10/2025` ou `2025-10-01`) para o formato `Date` do SQL.
-    * Converte colunas monetárias (ex: `1.234,56`) para `Decimal`, garantindo precisão.
-    * Limpa e padroniza campos de texto e o CPF.
-3.  **Carga (Load):**
-    * O script se conecta ao banco PostgreSQL usando credenciais de um arquivo `.env`.
-    * Ele verifica as competências (ex: '2025-10-01') presentes nos arquivos CSV.
-    * **Lógica Incremental:** Ele executa um `DELETE FROM tabela WHERE competencia IN (...)` para remover quaisquer dados dessas competências que já existam no banco.
-    * **Append:** Por fim, ele usa `to_sql(if_exists='append')` para inserir os novos dados tratados nas tabelas `FOPAG.fopag_totais` e `FOPAG.fopag_rubricas_detalhe`.
+### Objetivo: Centralizar e estruturar os dados no PostgreSQL.
 
-## 🛠️ Tecnologias Utilizadas
+### Tecnologias: `requests`, `pandas`, `sqlalchemy`, python-dotenv`
 
-* **Python 3.11+**
-* **Pandas:** Para manipulação e estruturação dos dados.
-* **PDFPlumber:** Para extração de texto de PDFs.
-* **SQLAlchemy:** Para ORM e definição de tipos de dados na conexão com o banco.
-* **Psycopg2-binary:** Driver de conexão com o PostgreSQL.
-* **Python-Dotenv:** Para gerenciamento de credenciais de banco de dados.
-* **PostgreSQL:** O banco de dados de destino.
+Etapas ETL:
 
-## 🏁 Como Executar o Projeto
+### 🔹 Extract
 
-### 1. Pré-requisitos
+API Solides: Extrai colaboradores do endpoint `/colaboradores` e detalhes de `/colaboradores/{id}.`
 
-* Python 3.11 ou superior
-* Um servidor PostgreSQL acessível
+CSVs: Lê as bases geradas pelo parser de PDF.
 
-### 2. Configuração do Ambiente
+### 🔹 Transform
 
-1.  Clone este repositório:
-    ```bash
-    git clone [https://github.com/seu-usuario/ETL-Folha-Pagamento-PDF.git](https://github.com/seu-usuario/ETL-Folha-Pagamento-PDF.git)
-    cd ETL-Folha-Pagamento-PDF
-    ```
+Normalização e renomeação de colunas.
 
-2.  Crie e ative um ambiente virtual:
-    ```bash
-    python -m venv .venv
-    # Windows
-    .\.venv\Scripts\activate
-    # macOS/Linux
-    source .venv/bin/activate
-    ```
+Conversão de valores monetários e tratamento de CPFs.
 
-3.  Crie um arquivo `requirements.txt` com o seguinte conteúdo:
-    ```
-    pandas
-    pdfplumber
-    SQLAlchemy
-    psycopg2-binary
-    python-dotenv
-    ```
+Geração da tabela de calendário (dim_calendario).
 
-4.  Instale as dependências:
-    ```bash
-    pip install -r requirements.txt
-    ```
+### 🔹 Load
 
-5.  Crie um arquivo `.env` na raiz do projeto para suas credenciais do PostgreSQL. O script espera por estas variáveis:
-    ```ini
-    # .env
-    DB_USER="seu_usuario_postgres"
-    DB_PASS="sua_senha_segura"
-    DB_HOST="localhost"
-    DB_PORT="5432"
-    DB_NAME="postgres"
-    DB_SCHEMA="FOPAG"
-    ```
+`dim_colaboradores (UPSERT)`: Atualiza ou insere colaboradores.
 
-### 3. Execução
+`fato_folha_* (Incremental)`: Estratégia DELETE-then-INSERT por competência.
 
-1.  Crie uma pasta chamada `FOPAG` na raiz do projeto.
-2.  Coloque todos os seus arquivos PDF de folha de pagamento dentro da pasta `FOPAG`.
-3.  Abra o notebook `leitor_fopag.ipynb` em seu editor (VS Code, Jupyter Lab).
-4.  Execute a **primeira célula de instalação** (`!pip install...`) ou pule-a, já que usamos o `requirements.txt`.
-5.  Execute a **célula principal (Etapa 1)**. Isso irá processar os PDFs e criar os dois arquivos CSV. Monitore o output para ver o progresso.
-6.  (Opcional) Execute a **célula de verificação (Etapa 1.5)** para checar os dados de um funcionário específico no CSV gerado.
-7.  Execute a **célula de carga (Etapa 2)**. Isso irá conectar ao seu banco de dados, criar o schema `FOPAG` (se não existir) e carregar os dados nas tabelas `fopag_totais` e `fopag_rubricas_detalhe`.
+Criação automática de colunas: Usa ALTER TABLE ... ADD COLUMN IF NOT EXISTS para evitar erros.
 
-Após a execução, seus dados estarão prontos para serem consultados no PostgreSQL.
+# 🧱 3. Estrutura do Data Warehouse
+
+O modelo segue o padrão Star Schema (Esquema Estrela).
+
+### 🧩 **Dimensões**
+|Tabela	|Fonte	|Descrição|
+|----------|---------|--------|
+|`dim_colaboradores`|	API Solides	Dados cadastrais e demográficos |(nome, cargo, departamento, salário, etc.)|
+|`dim_calendario`|	SQL	Datas com atributos de tempo |(ano, mês, trimestre, etc.)|
+### 📊 **Fatos**
+|Tabela	Fonte |Granularidade	|Descrição|
+|-----------|-------------|---------------|
+`fato_folha_consolidada`|	Totais CSV	|1 linha por colaborador/mês	|Proventos, Descontos, Bases INSS/IRRF|
+`fato_folha_detalhada`	|Rubricas CSV	|1 linha por rubrica/mês/colaborador|	Rubricas individuais (ex: Horas Extras, INSS)|
+
+#⚡ 4. Como Executar o Projeto
+###🔧 Pré-requisitos
+
+- Python 3.10+
+- PostgreSQL
+- Token de acesso à API Solides
+
+### 🧰 Configuração
+### 1️⃣ Clonar o Repositório
+`git clone <url-do-repositorio>
+cd <nome-do-repositorio>`
+
+### 2️⃣ Criar Ambiente Virtual
+`python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+.venv\Scripts\activate      # Windows`
+
+### 3️⃣ Instalar Dependências
+
+```requirements.txt
+pandas
+pdfplumber
+sqlalchemy
+psycopg2-binary
+requests
+python-dotenv
+pip install -r requirements.txt
+```
+
+### 4️⃣ Criar o arquivo .env
+# Credenciais da API Solides
+`SOLIDES_API_TOKEN="seu_token_aqui"`
+
+# Banco de Dados PostgreSQL
+```DB_USER="seu_usuario"
+DB_PASS="sua_senha"
+DB_HOST="localhost"
+DB_PORT="5432"
+DB_NAME="postgres"
+DB_SCHEMA="FOPAG"
+```
+### 🚀 Execução
+
+1-Coloque os PDFs na pasta FOPAG/
+
+2-Execute o notebook Automação_FOPAG.ipynb
+
+3-Execute o notebook Carga_API_Solides.ipynb
+
+4-Conecte o Power BI ao schema FOPAG do PostgreSQL
+
+### 🧮 5. Boas Práticas e Destaques Técnicos
+
+✅ Segurança: Credenciais isoladas em .env
+
+✅ Idempotência: UPSERT em dim_colaboradores
+
+✅ Carga Incremental: DELETE-then-INSERT por competência
+
+✅ Tolerância a mudanças no schema: ADD COLUMN IF NOT EXISTS
+
+✅ Modelagem em Estrela: ideal para análise no Power BI
+
+### 🔍 6. Próximos Passos (Melhorias Futuras)
+
+- Unificar scripts: PDF → DataFrame → Postgres (sem CSV intermediário).
+
+- Adicionar logging estruturado: usando logging para auditoria e controle.
+
+- Substituição de chaves no ETL: inserir colaborador_sk diretamente nas Fatos no PostgreSQL.
+
+### 📊 7. Modelagem e Transformações no Power BI
+
+O modelo no Power BI implementa um Star Schema otimizado, com substituição de chaves e normalização.
+
+### 🔁 Transformações no Power Query
+🔸 Substituição de Chaves (Key Substitution)
+
+Merge entre `fato_* e dim_colaboradores usando cpf_csv = cpf.`
+
+Extração da chave `colaborador_sk para substituir cpf_csv.`
+
+🔸 Criação de Dimensões (Snowflaking)
+
+`dim_Cargo`, `dim_Departamento`, `dim_Nivel_Educacional criadas referenciando dim_colaboradores`.
+
+### 🔗 Relacionamentos (Modelo Estrela)
+``` mermaid
+erDiagram
+    dim_calendario {
+        date data
+    }
+
+    fato_folha_consolidada {
+        int competencia
+        int colaborador_sk
+    }
+
+    fato_folha_detalhada {
+        int competencia
+        int colaborador_sk
+    }
+
+    dim_colaboradores {
+        int colaborador_sk
+        int id_Departamento
+        int id_Cargo
+        int id_Nivel_Educacional
+    }
+
+    dim_Departamento {
+        int id_Departamento
+    }
+
+    dim_Cargo {
+        int id_Cargo
+    }
+
+    dim_Nivel_Educacional {
+        int id_Nivel_Educacional
+    }
+
+    %% Relacionamentos 1:N
+    dim_calendario ||--o{ fato_folha_consolidada : "data = competencia"
+    dim_calendario ||--o{ fato_folha_detalhada : "data = competencia"
+
+    dim_colaboradores ||--o{ fato_folha_consolidada : "colaborador_sk"
+    dim_colaboradores ||--o{ fato_folha_detalhada : "colaborador_sk"
+
+    dim_Departamento ||--o{ dim_colaboradores : "id_Departamento"
+    dim_Cargo ||--o{ dim_colaboradores : "id_Cargo"
+    dim_Nivel_Educacional ||--o{ dim_colaboradores : "id_Nivel_Educacional"
+```
+🧠 Autor
+
+João Pedro dos Santos Santana
+📊 Analista de BI Júnior & Entusiasta de People Analytics
+📧 LinkedIn
+ | Notion
+
+Projeto desenvolvido para automatizar o fluxo de dados de RH, reduzir retrabalho manual e fortalecer análises de People Analytics com dados confiáveis e estruturados.
