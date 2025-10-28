@@ -202,56 +202,92 @@ Extração da chave `colaborador_sk para substituir cpf_csv.`
 
 ### 🔗 Relacionamentos (Modelo Estrela)
 ``` mermaid
-erDiagram
+erDiagram TB
+
+    %% --- Dimensões Principais (Em cima) ---
     dim_calendario {
-        date data
-    }
-
-    fato_folha_consolidada {
-        int competencia
-        int colaborador_sk
-    }
-
-    fato_folha_detalhada {
-        int competencia
-        int colaborador_sk
+        int data_sk PK "Surrogate Key (ex: 20251001)"
+        date data_calendario "Data completa (ex: 2025-10-01)"
+        int ano
+        int mes
+        string nome_mes
+        int competencia_int "Formato YYYYMM (ex: 202510)"
     }
 
     dim_colaboradores {
-        int colaborador_sk
-        int id_Departamento
-        int id_Cargo
-        int id_Nivel_Educacional
+        int colaborador_sk PK "Surrogate Key do Colaborador"
+        string nome_colaborador
+        string matricula
+        date data_admissao
+        int id_Departamento FK
+        int id_Cargo FK
+        int id_Nivel_Educacional FK
     }
 
+    %% --- Tabelas Fato (No Meio) ---
+    fato_folha_consolidada {
+        int data_sk PK "Ref. dim_calendario (Parte da PK)"
+        int colaborador_sk PK "Ref. dim_colaboradores (Parte da PK)"
+        decimal salario_base
+        decimal total_proventos
+        decimal total_descontos
+        decimal liquido_a_pagar
+    }
+
+    fato_folha_detalhada {
+        int data_sk PK "Ref. dim_calendario (Parte da PK)"
+        int colaborador_sk PK "Ref. dim_colaboradores (Parte da PK)"
+        int evento_sk PK "Ref. dim_evento_folha (Parte da PK)"
+        decimal valor_evento
+    }
+
+    %% --- (Recomendação) Dimensão Faltante ---
+    dim_evento_folha {
+         int evento_sk PK "Surrogate Key do Evento"
+         string id_evento_original "ID do sistema de origem (ex: 101)"
+         string nome_evento "Ex: Salário Base, INSS, Horas Extras"
+         string tipo_evento "Provento, Desconto, Base"
+    }
+
+    %% --- Dimensões Secundárias / "Snowflake" (Embaixo) ---
     dim_Departamento {
-        int id_Departamento
+        int id_Departamento PK
+        string nome_departamento
+        string centro_de_custo
     }
 
     dim_Cargo {
-        int id_Cargo
+        int id_Cargo PK
+        string nome_cargo
+        string cbo
     }
 
     dim_Nivel_Educacional {
-        int id_Nivel_Educacional
+        int id_Nivel_Educacional PK
+        string descricao_nivel
     }
 
-    %% Relacionamentos 1:N
-    dim_calendario ||--o{ fato_folha_consolidada : "data = competencia"
-    dim_calendario ||--o{ fato_folha_detalhada : "data = competencia"
+
+    %% --- Relacionamentos ---
+    %% Estas linhas JÁ definem as Foreign Keys (FKs)
+    dim_calendario ||--o{ fato_folha_consolidada : "data_sk"
+    dim_calendario ||--o{ fato_folha_detalhada : "data_sk"
 
     dim_colaboradores ||--o{ fato_folha_consolidada : "colaborador_sk"
     dim_colaboradores ||--o{ fato_folha_detalhada : "colaborador_sk"
 
+    %% dim_colaboradores liga-se às suas dimensões "snowflake"
     dim_Departamento ||--o{ dim_colaboradores : "id_Departamento"
     dim_Cargo ||--o{ dim_colaboradores : "id_Cargo"
     dim_Nivel_Educacional ||--o{ dim_colaboradores : "id_Nivel_Educacional"
+
+    %% Ligação com a nova dimensão recomendada
+    dim_evento_folha ||--o{ fato_folha_detalhada : "evento_sk"
 ```
 🧠 Autor
 
-João Pedro dos Santos Santana
-📊 Analista de BI Júnior & Entusiasta de People Analytics
-📧 LinkedIn
- | Notion
+## João Pedro dos Santos Santana
+### 📊 Analista de BI Júnior & Entusiasta de People Analytics
+### 📧 LinkedIn | Notion
 
 Projeto desenvolvido para automatizar o fluxo de dados de RH, reduzir retrabalho manual e fortalecer análises de People Analytics com dados confiáveis e estruturados.
